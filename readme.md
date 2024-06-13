@@ -7,8 +7,11 @@ All these last posts are put into a .csv file at the end with their URL, thread 
 ```python
 pipenv install
 pipenv run main
+# now check the created csv file
 ```
 
 # Dev
 Restarts after every edit to the python file
-`pipenv run hupper main`
+`pipenv run hupper -m main`
+
+You may want to limit the number of pages visited (`main.py` `get_all_threads(max_page=100)`) to `1` or `2` and after the first run disable that part and rely on the intermediary `threads.pkl` file, which caches the results of `get_all_threads`.

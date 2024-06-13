@@ -16,13 +16,13 @@ def parse_url(url: str) -> tuple[str, BeautifulSoup]:
 
 
 @dataclass
-class ThreadFinale():
+class ThreadInfo():
     title: str
     url: str
     last_comment: str
 
 
-def handle_thread(thread: Tag) -> ThreadFinale:
+def handle_thread(thread: Tag) -> ThreadInfo:
     title = thread.text.strip()
     href = thread.attrs.get('href')
     href = urljoin(href, "?do=getLastComment")
@@ -33,39 +33,39 @@ def handle_thread(thread: Tag) -> ThreadFinale:
     print("-", title)
     print("  -", href)
     # print("  -", last_comment)
-    return ThreadFinale(
+    return ThreadInfo(
         title=title,
         url=href,
         last_comment=last_comment
     )
 
 
-def handle_page(page_soup: BeautifulSoup) -> list[ThreadFinale]:
+def handle_page(page_soup: BeautifulSoup) -> list[ThreadInfo]:
     selector = ".cTopicList .ipsDataItem_title .ipsContained a"
     threads = page_soup.select(selector)
 
     return [handle_thread(t) for t in threads]
 
 
-def get_all_threads(max_page=100):
+def get_all_threads(max_page=100) -> list[ThreadInfo]:
     threads = []
-    for page_id in range(1, max_page):
-        # visited_url = f"https://www.ultraleicht-trekking.com/forum/forum/58-philosophie/page/{page_id}"
+    for page_id in range(1, max_page + 1):
         visited_url = f"https://www.ultraleicht-trekking.com/forum/forum/53-biete/page/{page_id}"
+        print("Visiting", visited_url)
         actual_url, soup = parse_url(visited_url)
         if actual_url != visited_url:
             print("!! Aborting, last valid page id", page_id - 1)
             break
         threads += handle_page(soup)
-
     return threads
+
 
 def reduce_whitespace(input_string):
     return re.sub(r'\s+', ' ', input_string).strip()
 
 
-def export_csv(threads: list[ThreadFinale]):
-    with open("output.csv", 'w', newline='') as csvfile:
+def export_csv(threads: list[ThreadInfo], filename: str):
+    with open(filename, 'w', newline='', encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=[
                                 "erledigt", "title", "url", "last_comment", ])
         writer.writeheader()
@@ -79,12 +79,19 @@ def export_csv(threads: list[ThreadFinale]):
 
 
 def main():
-    threads = get_all_threads(max_page=100)
+    # Get last message from all threads
+    threads = get_all_threads(max_page=50)
+
+    # use cache to store them for development
     with open("threads.pkl", "wb") as f:
         pickle.dump(obj=threads, file=f)
 
     with open("threads.pkl", "rb") as f:
         threads = pickle.load(file=f)
-    export_csv(threads=threads)
 
-main()
+    export_csv(threads=threads, filename="output.csv")
+
+
+if __name__ == "__main__":
+    print("Starting")
+    main()
