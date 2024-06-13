@@ -4,14 +4,17 @@ import dataclasses
 from urllib.parse import urljoin
 import pickle
 import re
+from multiprocessing import Pool
 
 import requests
 from bs4 import BeautifulSoup, Tag
 
+CONCURRENT_HTTP_REQUESTS = 5
+
 
 def parse_url(url: str) -> tuple[str, BeautifulSoup]:
     """returning the url allows verifying the right page was loaded"""
-    r = requests.get(url, timeout=10)
+    r = requests.get(url, timeout=30)
     return r.url, BeautifulSoup(r.content, 'html.parser')
 
 
@@ -30,14 +33,14 @@ class ThreadInfo():
     """Timestamp of the last comment, isoformat"""
 
 
-def handle_thread(thread: Tag) -> ThreadInfo:
-    title = thread.text.strip()
-    href = thread.attrs.get('href')
+def handle_thread(title, href) -> ThreadInfo:
     href = urljoin(href, "?do=getLastComment")
-    _, thread_soup = parse_url(href)
+    actual_url, thread_soup = parse_url(href)
+    print("-", title)
+    print("  -", href)
+    print("  -", actual_url)
 
     last_comment = thread_soup.select_one(".cPost:last-of-type")
-
     has_author_badge = len(last_comment.select(".ipsComment_authorBadge")) > 0
 
     last_comment_text = last_comment.select_one(
@@ -46,25 +49,41 @@ def handle_thread(thread: Tag) -> ThreadInfo:
     timestamp_isoformat = last_comment.select_one(
         "time[datetime]").attrs.get("datetime")
 
-    print("-", title)
-    print("  -", href)
     print("  -", timestamp_isoformat)
     print("  -", "author_badge" if has_author_badge else "no author_badge")
 
     return ThreadInfo(
         title=title,
-        url=href,
+        url=actual_url,
         last_comment=last_comment_text,
         timestamp=timestamp_isoformat,
         last_comment_by_author=has_author_badge,
     )
 
 
+def handle_thread_wrapper(t: tuple[str, str]):
+    [title, href] = t
+    try:
+        return handle_thread(title, href)
+    except Exception as ex:
+        print("ERROR while handling", title, href, ex)
+        return ThreadInfo(
+            title=title,
+            url=href,
+            last_comment=str(ex),
+            timestamp="",
+            last_comment_by_author=False,
+        )
+
+
 def handle_page(page_soup: BeautifulSoup) -> list[ThreadInfo]:
     selector = ".cTopicList .ipsDataItem_title .ipsContained a"
     threads = page_soup.select(selector)
+    threads = list(map(lambda t: (t.text.strip(), t.attrs.get('href')), threads))
 
-    return [handle_thread(t) for t in threads]
+    with Pool(CONCURRENT_HTTP_REQUESTS) as pool:
+        return pool.map(handle_thread_wrapper, threads)
+    # return [handle_thread(t) for t in threads]  # non-concurrent alternative
 
 
 def get_all_threads(max_page=100) -> list[ThreadInfo]:
@@ -100,9 +119,9 @@ def export_csv(threads: list[ThreadInfo], filename: str):
         writer.writeheader()
         for thread in threads:
             thread.last_comment = reduce_whitespace(thread.last_comment)
-            data = dataclasses.asdict(thread)
             last_comment = thread.last_comment.lower()
             keywords = ["erledigt", "verschoben"]
+            data = dataclasses.asdict(thread)
             data["erledigt"] = any(k for k in keywords if k in last_comment)
             writer.writerow(data)
 
