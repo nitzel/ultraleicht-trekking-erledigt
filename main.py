@@ -20,6 +20,14 @@ class ThreadInfo():
     title: str
     url: str
     last_comment: str
+    last_comment_by_author: bool
+    """
+    If true, the creator of the thread is the author of the last comment.
+    However, this is `False` for the first comment of a thread!
+    """
+
+    timestamp: str
+    """Timestamp of the last comment, isoformat"""
 
 
 def handle_thread(thread: Tag) -> ThreadInfo:
@@ -27,16 +35,28 @@ def handle_thread(thread: Tag) -> ThreadInfo:
     href = thread.attrs.get('href')
     href = urljoin(href, "?do=getLastComment")
     _, thread_soup = parse_url(href)
-    last_comment = thread_soup.select_one(
-        ".cPost:last-of-type [data-role='commentContent']")
-    last_comment = last_comment.text.strip()
+
+    last_comment = thread_soup.select_one(".cPost:last-of-type")
+
+    has_author_badge = len(last_comment.select(".ipsComment_authorBadge")) > 0
+
+    last_comment_text = last_comment.select_one(
+        "[data-role='commentContent']").text.strip()
+
+    timestamp_isoformat = last_comment.select_one(
+        "time[datetime]").attrs.get("datetime")
+
     print("-", title)
     print("  -", href)
-    # print("  -", last_comment)
+    print("  -", timestamp_isoformat)
+    print("  -", "author_badge" if has_author_badge else "no author_badge")
+
     return ThreadInfo(
         title=title,
         url=href,
-        last_comment=last_comment
+        last_comment=last_comment_text,
+        timestamp=timestamp_isoformat,
+        last_comment_by_author=has_author_badge,
     )
 
 
@@ -66,8 +86,17 @@ def reduce_whitespace(input_string):
 
 def export_csv(threads: list[ThreadInfo], filename: str):
     with open(filename, 'w', newline='', encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=[
-                                "erledigt", "title", "url", "last_comment", ])
+        writer = csv.DictWriter(
+            csvfile,
+            fieldnames=[
+                "timestamp",
+                "erledigt",
+                "last_comment_by_author",
+                "title",
+                "url",
+                "last_comment",
+            ]
+        )
         writer.writeheader()
         for thread in threads:
             thread.last_comment = reduce_whitespace(thread.last_comment)
