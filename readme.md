@@ -10,6 +10,11 @@ pipenv run main
 # now check the created csv file
 ```
 
+# Concurrency
+To reduce runtime, the script uses a pool of `CONCURRENT_HTTP_REQUESTS` to fetch the pages in parallel.
+However, if this number is too high, the website might temporarily block you from making requests.
+In that case, try a lower number for `CONCURRENT_HTTP_REQUESTS` - `1` should always work.
+
 # Dev
 Restarts after every edit to the python file
 `pipenv run hupper -m main`
